@@ -1,15 +1,18 @@
 package dev.morphia.mapping.experimental;
 
+import com.mongodb.DBObject;
 import com.mongodb.DBRef;
 import com.mongodb.client.MongoCursor;
 import dev.morphia.Datastore;
 import dev.morphia.mapping.MappedClass;
 import dev.morphia.mapping.MappedField;
 import dev.morphia.mapping.Mapper;
-import dev.morphia.query.Query;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
@@ -20,57 +23,69 @@ import java.util.Map.Entry;
 public class MapReference<T> extends MorphiaReference<Map<String, T>> {
     private Map<String, Object> ids;
     private Map<String, T> values;
+    private Map<String, List<Object>> collections = new HashMap<String, List<Object>>();
 
     /**
      * @morphia.internal
      */
     public MapReference(final Datastore datastore, final MappedClass mappedClass, final String collection, final Map<String, Object> ids) {
-        super(datastore, mappedClass, collection);
-        this.ids = unwrap(ids, collection != null);
+        super(datastore, mappedClass);
+        this.ids = unwrap(collection, ids);
     }
 
-    private Map<String, Object> unwrap(final Map<String, Object> ids, final boolean dbRefs) {
-        if(ids != null && !ids.isEmpty()) {
-            if(dbRefs) {
-                for (final Entry<String, Object> entry : ids.entrySet()) {
-                    ids.put(entry.getKey(), ((DBRef) entry.getValue()).getId());
-                }
+    protected Map<String, Object> unwrap(final String collection, final Map<String, Object> ids) {
+        Map<String, Object> unwrapped = ids;
+        if(ids != null) {
+            for (final Entry<String, Object> entry : ids.entrySet()) {
+                CollectionReference.collate(collections, collection, entry.getValue());
             }
         }
 
-        return ids;
+        return unwrapped;
     }
 
-    protected MapReference(final Map<String, T> values, final String collection) {
-        super(collection);
+    protected MapReference(final Map<String, T> values) {
         set(values);
     }
 
-    @SuppressWarnings("unchecked")
     public Map<String, T> get() {
         if (values == null && ids != null) {
-            final Query<?> query = buildQuery()
-                                       .filter("_id in", ids.values());
-            final MongoCursor<T> cursor = (MongoCursor<T>) query
-                                                               .find();
-            try {
-
-                final Map<Object, T> idMap = new HashMap<Object, T>();
-                while (cursor.hasNext()) {
-                    final T entity = cursor.next();
-                    idMap.put(getDatastore().getMapper().getId(entity), entity);
-                }
-
-                final LinkedHashMap lhm = new LinkedHashMap();
-                for (final Entry<String, Object> entry : ids.entrySet()) {
-                    lhm.put(entry.getKey(), idMap.get(entry.getValue()));
-                }
-                values = lhm;
-            } finally {
-                cursor.close();
-            }
+            values = new LinkedHashMap<String, T>();
+            mergeReads();
         }
         return values;
+    }
+
+    private void mergeReads() {
+        for (final Entry<String, List<Object>> entry : collections.entrySet()) {
+            readFromSingleCollection(entry.getKey(), entry.getValue());
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    public void readFromSingleCollection(final String collection, final List<Object> collectionIds) {
+
+        final Class<?> collectionType = getDatastore().getMapper().getClassFromCollection(collection);
+        final MongoCursor<T> cursor = (MongoCursor<T>) getDatastore().find(collectionType)
+                                                                     .filter("_id in ", collectionIds)
+                                                                     .find();
+        try {
+            final Map<Object, T> idMap = new HashMap<Object, T>();
+            while (cursor.hasNext()) {
+                final T entity = cursor.next();
+                idMap.put(getDatastore().getMapper().getId(entity), entity);
+            }
+
+            for (final Entry<String, Object> entry : ids.entrySet()) {
+                final Object id = entry.getValue();
+                final T value = idMap.get(id instanceof DBRef ? ((DBRef)id).getId() : id);
+                if(value != null) {
+                    values.put(entry.getKey(), value);
+                }
+            }
+        } finally {
+            cursor.close();
+        }
     }
 
     public void set(Map<String, T> values) {
@@ -84,15 +99,33 @@ public class MapReference<T> extends MorphiaReference<Map<String, T>> {
     @Override
     public Object encode(final Mapper mapper, final Object value, final MappedField field) {
         if (isResolved()) {
-            final Class type = field.getTypeParameters().get(0).getSubClass();
-            final Map<String, T> wrapped = get();
-            Map<String, Object> ids = new LinkedHashMap<String, Object>(wrapped.size());
-            for (final Entry<String, T> entry : wrapped.entrySet()) {
-                ids.put(entry.getKey(), wrapId(mapper, entry.getValue()));
+            Map<String, Object> ids = new LinkedHashMap<String, Object>();
+            for (final Entry<String, T> entry : get().entrySet()) {
+                ids.put(entry.getKey(), wrapId(mapper, field, entry.getValue()));
             }
-            return mapper.toMongoObject(field, mapper.getMappedClass(type), ids);
+            return ids;
         } else {
             return null;
         }
+    }
+
+    public static MapReference decode(final Datastore datastore, final Mapper mapper, final MappedField mappedField,
+                                      final DBObject dbObject) {
+        final Class subType = mappedField.getTypeParameters().get(0).getSubClass();
+
+        final Map<String, Object> ids = (Map<String, Object>) mappedField.getDbObjectValue(dbObject);
+        MapReference reference = null;
+        if (ids != null) {
+            final Collection<Object> values = ids.values();
+            final Object first = values.iterator().next();
+            String collection = null;
+            if (first instanceof DBRef) {
+                collection = ((DBRef) first).getCollectionName();
+            }
+
+            reference = new MapReference(datastore, mapper.getMappedClass(subType), collection, ids);
+        }
+
+        return reference;
     }
 }

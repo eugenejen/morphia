@@ -261,7 +261,7 @@ public class MorphiaReferenceTest extends TestBase {
         }
 
         public void setList(final String collection, final List<Book> list) {
-            this.list = MorphiaReference.wrap(collection, list);
+            this.list = MorphiaReference.wrap(list);
         }
 
         public Set<Book> getSet() {
@@ -273,7 +273,7 @@ public class MorphiaReferenceTest extends TestBase {
         }
 
         public void setSet(final String collection, final Set<Book> set) {
-            this.set = MorphiaReference.wrap(collection, set);
+            this.set = MorphiaReference.wrap(set);
         }
 
         public Map<String, Book> getMap() {
@@ -285,7 +285,7 @@ public class MorphiaReferenceTest extends TestBase {
         }
 
         public void setMap(final String collection,  final Map<String, Book> map) {
-            this.map = MorphiaReference.wrap(collection, map);
+            this.map = MorphiaReference.wrap(map);
         }
 
         @Override
@@ -351,7 +351,7 @@ public class MorphiaReferenceTest extends TestBase {
         }
 
         public void setAuthor(final String collection, final Author author) {
-            this.author = MorphiaReference.wrap(collection, author);
+            this.author = MorphiaReference.wrap(author);
         }
 
         @Override
