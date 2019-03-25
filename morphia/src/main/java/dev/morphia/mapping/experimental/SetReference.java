@@ -29,7 +29,8 @@ public class SetReference<T> extends CollectionReference<Set<T>> {
         super(datastore, mappedClass, collection, ids);
     }
 
-    protected SetReference(final Set<T> values) {
+    protected SetReference(final Set<T> values, final String collection) {
+        super(collection);
         set(values);
     }
 

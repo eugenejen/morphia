@@ -22,7 +22,8 @@ public class ListReference<T> extends CollectionReference<List<T>> {
         super(datastore, mappedClass, collection, ids);
     }
 
-    protected ListReference(final List<T> values) {
+    protected ListReference(final List<T> values, final String collection) {
+        super(collection);
         set(values);
     }
 

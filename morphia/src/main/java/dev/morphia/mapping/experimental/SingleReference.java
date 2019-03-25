@@ -16,7 +16,6 @@ import dev.morphia.query.Query;
  */
 @SuppressWarnings("deprecation")
 public class SingleReference<T> extends MorphiaReference<T> {
-    private String collection;
     private Object id;
     private T value;
 
@@ -24,29 +23,14 @@ public class SingleReference<T> extends MorphiaReference<T> {
      * @morphia.internal
      */
     public SingleReference(final Datastore datastore, final MappedClass mappedClass, final String collection, final Object id) {
-        super(datastore, mappedClass);
-        this.collection = collection;
+        super(datastore, mappedClass, collection);
         this.id = id;
     }
 
-    protected SingleReference(final T value) {
+    protected SingleReference(final T value, final String collection) {
+        super(collection);
         set(value);
     }
-
-    /**
-     * @morphia.internal
-     */
-    protected String getCollection() {
-        return collection;
-    }
-
-    /**
-     * @morphia.internal
-     */
-    protected void setCollection(final String collection) {
-        this.collection = collection;
-    }
-
 
     @SuppressWarnings("unchecked")
     public T get() {
@@ -68,7 +52,7 @@ public class SingleReference<T> extends MorphiaReference<T> {
 
     protected Query<?> buildQuery() {
         final Query<?> query;
-        if (collection == null) {
+        if (getCollection() == null) {
             query = getDatastore().find(getMappedClass().getClazz());
         } else {
             query = ((AdvancedDatastore) getDatastore()).find(getCollection(), getMappedClass().getClazz());
@@ -87,7 +71,7 @@ public class SingleReference<T> extends MorphiaReference<T> {
     @Override
     public Object encode(Mapper mapper, final Object value, final MappedField optionalExtraInfo) {
         if(isResolved()) {
-            return wrapId(mapper, optionalExtraInfo, get());
+            return wrapId(mapper, optionalExtraInfo, getCollection(), get());
         } else {
             return null;
         }
@@ -102,10 +86,13 @@ public class SingleReference<T> extends MorphiaReference<T> {
         Object id = dbObject.get(mappedField.getMappedFieldName());
         String collection = null;
         if (id instanceof DBRef) {
-            collection = ((DBRef) id).getCollectionName();
-            final Class<?> klass = mapper.getClassFromCollection(((DBRef) id).getCollectionName());
-            final MappedField idField = mapper.getMappedClass(klass).getMappedIdField();
-            id = mapper.getConverters().decode(idField.getConcreteType(), ((DBRef) id).getId(), mappedField);
+            final DBRef dbRef = (DBRef) id;
+
+            collection = dbRef.getCollectionName();
+//            final MappedField typeParameter = mappedField.getTypeParameters().get(0);
+//            final Class type = typeParameter.getType();
+//            final MappedField idField = mapper.getMappedClass(type).getMappedIdField();
+            id = dbRef.getId(); // mapper.getConverters().decode(idField.getConcreteType(), dbRef.getId(), mappedField);
         }
 
         return new SingleReference(datastore, mappedClass, collection, id);

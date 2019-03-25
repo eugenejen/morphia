@@ -23,36 +23,34 @@ public abstract class CollectionReference<C extends Collection> extends MorphiaR
     private List<Object> ids;
     private Map<String, List<Object>> collections = new HashMap<String, List<Object>>();
 
-    public CollectionReference() {
-    }
 
     public CollectionReference(final Datastore datastore, final MappedClass mappedClass, final String collection, final List ids) {
-        super(datastore, mappedClass);
-        this.ids = unwrap(collection, ids);
-    }
-
-    protected List<Object> unwrap(final String collection, final List list) {
-        List<Object> unwrapped = list;
-        if(list != null) {
-            for (final Object o : list) {
-                collate(collections, collection, o);
+        super(datastore, mappedClass, collection);
+        List<Object> unwrapped = ids;
+        if(ids != null) {
+            for (final Object o : ids) {
+                collate(datastore, collections, collection, o);
             }
         }
 
-        return unwrapped;
+        this.ids = unwrapped;
     }
 
-    static void collate(final Map<String, List<Object>> collections,
+    public CollectionReference(final String collection) {
+        super(collection);
+    }
+
+    static void collate(final Datastore datastore, final Map<String, List<Object>> collections,
                         final String collection,
                         final Object o) {
         final String collectionName;
         final Object id;
         if (o instanceof DBRef) {
             final DBRef dbRef = (DBRef) o;
-            collectionName = dbRef.getCollectionName();
+            collectionName = collection != null ? collection: dbRef.getCollectionName();
             id = dbRef.getId();
         } else {
-            collectionName = collection;
+            collectionName = collection != null ? collection: datastore.getMapper().getCollectionName(o);
             id = o;
         }
 
@@ -119,7 +117,7 @@ public abstract class CollectionReference<C extends Collection> extends MorphiaR
         if (isResolved()) {
             List ids = new ArrayList();
             for (final Object entity : get()) {
-                ids.add(wrapId(mapper, field, entity));
+                ids.add(wrapId(mapper, field, getCollection(), entity));
             }
             return ids;
         } else {
@@ -138,8 +136,10 @@ public abstract class CollectionReference<C extends Collection> extends MorphiaR
             final Class subType = mappedField.getTypeParameters().get(0).getSubClass();
             final MappedClass mappedClass = mapper.getMappedClass(subType);
             String collection = null;
-            if(!dbVal.isEmpty() && dbVal.get(0) instanceof DBRef) {
-                collection = ((DBRef) dbVal.get(0)).getCollectionName();
+
+            final boolean usingDbRefs = !dbVal.isEmpty() && dbVal.get(0) instanceof DBRef;
+            if (!usingDbRefs) {
+                collection = mappedClass.getMappedIdField() != null ? mappedClass.getCollectionName() : null;
             }
             if (Set.class.isAssignableFrom(paramType)) {
                 reference = new SetReference(datastore, mappedClass, collection, dbVal);
